@@ -1,2 +1,6 @@
 # cloudformation-differential-pipeline
-Cloudformation Pipelines based on differential changes. Namely Services (High Change), Database (Medium Change) and Infrastructure (Low Change)
+Cloudformation Pipelines based on differential changes. For example:
+
+* Services (High Change)
+* Database (Medium Change)
+* Infrastructure (Low Change)
