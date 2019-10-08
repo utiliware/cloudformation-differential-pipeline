@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This template deploys a Public Application Load Balancer that exposes our various ECS services. 
+Parameters:
+  ParentVPCStack:
+    Description: Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.
+    Type: String
+  ParentClientStack:
+    Description: 'Stack name of parent client stack based on state/client-sg.yaml template.'
+    Type: String
+  Cert:
+    Description: SSL Certificate Arn 
+    Type: String
+    Default: arn:aws:acm:us-east-1:695193550836:certificate/b06885da-2bae-4a99-87dc-575cb84d6863
+  Domain: 
+    Description: The Domain Name 
+    Type: String
+    Default: caredataworks.com
+  Environment: 
+    Description: The Environment Name 
+    Type: String
+Resources:
+  AlbLogsS3Bucket: 
+    Type: AWS::S3::Bucket 
+    DeletionPolicy: Retain 
+    Properties:  
+      BucketName: !Sub ${AWS::StackName}-alblogs
+      LifecycleConfiguration: 
+        Rules: 
+        - AbortIncompleteMultipartUpload: 
+            DaysAfterInitiation: 7 
+          Status: Enabled 
+        - NoncurrentVersionExpirationInDays: 1 
+          Status: Enabled 
+        - ExpirationInDays: 7 
+          Status: Enabled 
+  AlbS3BucketPolicyPrivate:
+      Type: AWS::S3::BucketPolicy 
+      Properties:  
+        Bucket: !Ref AlbLogsS3Bucket 
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:  
+            -  
+              Action:  
+                - "s3:PutObject" 
+              Effect: "Deny" 
+              Resource: !Sub ${AlbLogsS3Bucket.Arn}/*
+              Principal: "*"
+  LoadBalancer: 
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer 
+    Properties: 
+      Scheme: internet-facing 
+      Subnets: !Split [',', !Join [',', [{'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'}, {'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'}]]]
+      LoadBalancerAttributes: 
+        - Key: access_logs.s3.enabled 
+          Value: true 
+        - Key: access_logs.s3.bucket 
+          Value: !Ref AlbLogsS3Bucket 
+        - Key: access_logs.s3.prefix 
+          Value: public 
+        - Key: idle_timeout.timeout_seconds 
+          Value: 60  
+        - Key: deletion_protection.enabled 
+          Value: false 
+        - Key: routing.http2.enabled 
+          Value: true 
+      SecurityGroups:
+        - {'Fn::ImportValue': !Sub '${ParentClientStack}-ClientSecurityGroup'}
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-ALB-Public
+  DNS:
+    Type: AWS::Route53::RecordSetGroup 
+    Properties:
+      HostedZoneName: !Join ["", [!Ref 'Domain', .]] 
+      Comment: Zone apex alias targeted to the LoadBalancer. 
+      RecordSets: 
+      - Name: !Join ['', [!Ref 'Environment', ., !Ref 'Domain',.]] 
+        Type: A 
+        AliasTarget: 
+          HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID 
+          DNSName: !GetAtt LoadBalancer.DNSName 
+  # LoadBalancerListenerHTTP:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener 
+  #   Properties: 
+  #     LoadBalancerArn: !Ref LoadBalancer 
+  #     Port: 80 
+  #     Protocol: HTTP 
+  #     DefaultActions: 
+  #     - Type: redirect 
+  #       RedirectConfig: 
+  #         Host: "#{host}" 
+  #         Path: "/#{path}" 
+  #         Port: 443 
+  #         Protocol: HTTPS 
+  #         Query: "#{query}" 
+  #         StatusCode: HTTP_302
+Outputs: 
+  LoadBalancer:
+    Description: A reference to the Application Load Balancer
+    Value: !GetAtt LoadBalancer.LoadBalancerFullName
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancer'
+  LoadBalancerUrl:
+    Description: The URL of the ALB
+    Value: !GetAtt LoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerUrl'
+  # DNS:
+  #   Description: A reference to WebsiteDNSName
+  #   Value: !Ref DNS
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-DNS'

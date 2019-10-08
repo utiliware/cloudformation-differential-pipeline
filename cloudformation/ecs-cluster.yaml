@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This template deploys an ECS cluster to the provided VPC and subnets using an Auto Scaling Group
+# Parameters:
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}'
+Outputs:
+  ECSCluster:
+    Description: A reference to the created ECSCluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-ECSCluster'
+  ECSClusterARN:
+    Description: A reference to the created ECSClusterARN
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ECSClusterARN'

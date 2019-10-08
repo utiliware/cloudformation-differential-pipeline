@@ -1,0 +1,547 @@
+Description: Infratructure Pipeline
+Parameters: 
+  StackName: 
+    Description: The full AWS environment and application name that will be prefixed to resource names 
+    Type: String 
+  Environment:
+    Description: Environment Name 
+    Type: String 
+  CloudformationBucket: 
+    Description: Cloudformation Bucket Name 
+    Type: String 
+    Default: cdw-iac-us-east-1
+  RepositoryName: 
+    Type: String 
+    Default: cdw 
+  BranchName: 
+    Type: String 
+    Default: cloudformation 
+  ClassB: 
+    Type: String 
+    Default: 0 
+  Path: 
+    Type: String 
+    Default: cloudformation
+  EngineVersion: 
+    Type: String 
+    Default: 11.4
+  DBInstanceClass: 
+    Type: String 
+    Default: t3.micro
+  DBMultiAZ: 
+    Type: String 
+    Default: false
+  EnhancedMonitoring: 
+    Type: String 
+    Default: false
+  EnablePerformanceInsights: 
+    Type: String 
+    Default: false
+  DeletionProtection: 
+    Type: String 
+    Default: false
+  EnableIAMDatabaseAuthentication: 
+    Type: String 
+    Default: false
+  Domain: 
+    Type: String 
+    Default: caredataworks.com
+Resources: 
+  ArtifactsBucket: 
+    DependsOn: CloudFormationRole 
+    DeletionPolicy: Retain 
+    Type: AWS::S3::Bucket 
+  # PortalArtifactsRepository: 
+  #   DependsOn: CloudFormationRole 
+  #   DeletionPolicy: Retain 
+  #   Type: AWS::ECR::Repository 
+  #   Properties: 
+  #     LifecyclePolicy: 
+  #       LifecyclePolicyText: >-
+  #         {"rules":[{"rulePriority":1,"description":"Expire count greater that 20 
+  #         days","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]} 
+  #       RegistryId: !Ref AWS::AccountId 
+  # HubArtifactsRepository: 
+  #   DependsOn: CloudFormationRole 
+  #   DeletionPolicy: Retain 
+  #   Type: AWS::ECR::Repository 
+  #   Properties: 
+  #     LifecyclePolicy: 
+  #       LifecyclePolicyText: >-
+  #         {"rules":[{"rulePriority":1,"description":"Expire count greater that 20 
+  #         days","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]} 
+  #       RegistryId: !Ref AWS::AccountId 
+ 
+  PipelineRole: 
+    DependsOn: CloudFormationRole 
+    Type: 'AWS::IAM::Role' 
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17' 
+        Statement: 
+        - Effect: Allow 
+          Principal: 
+            Service: 
+            - 'codepipeline.amazonaws.com' 
+          Action: 
+          - 'sts:AssumeRole' 
+      ManagedPolicyArns: 
+      - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  CloudFormationRole:
+    Type: AWS::IAM::Role 
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17' 
+        Statement: 
+        - Effect: Allow 
+          Principal: 
+            Service: 
+            - 'cloudformation.amazonaws.com' 
+          Action: 
+          - 'sts:AssumeRole' 
+      ManagedPolicyArns: 
+      - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  CodeBuildRole: 
+    DependsOn: CloudFormationRole 
+    Type: AWS::IAM::Role 
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17' 
+        Statement: 
+        - Effect: Allow 
+          Principal: 
+            Service: 
+            - 'codebuild.amazonaws.com' 
+          Action: 
+          - 'sts:AssumeRole' 
+      Policies: 
+      - PolicyName: ServiceRole 
+        PolicyDocument: 
+          Version: '2012-10-17' 
+          Statement: 
+          - Sid: CloudWatchLogsPolicy 
+            Effect: Allow 
+            Action: 
+            - 'logs:CreateLogGroup' 
+            - 'logs:CreateLogStream' 
+            - 'logs:PutLogEvents' 
+            Resource: '*' 
+          - Sid: CodeCommitPolicy 
+            Effect: Allow 
+            Action: 'codecommit:GitPull' 
+            Resource: '*' 
+          - Sid: S3GetObjectPolicy 
+            Effect: Allow 
+            Action: 
+            - 's3:GetObject' 
+            - 's3:GetObjectVersion' 
+            - 's3:List*' 
+            - 's3:Delete*' 
+            Resource: '*' 
+          - Sid: S3PutObjectPolicy 
+            Effect: 'Allow' 
+            Action: 's3:PutObject' 
+            Resource: '*' 
+          - Sid: ECR 
+            Effect: 'Allow' 
+            Action: 'ecr:GetAuthorizationToken' 
+            Resource: '*' 
+          # - Sid: ECRRepo 
+          #   Effect: 'Allow' 
+          #   Action: 
+          #   - 'ecr:BatchCheckLayerAvailability' 
+          #   - 'ecr:CompleteLayerUpload' 
+          #   - 'ecr:InitiateLayerUpload' 
+          #   - 'ecr:PutImage' 
+          #   - 'ecr:UploadLayerPart' 
+          #   Resource: 
+          #   - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${PortalArtifactsRepository}'
+          #   - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${HubArtifactsRepository}'
+          - Sid: KMS 
+            Effect: 'Allow' 
+            Action: 
+            - 'kms:Get*' 
+            - 'kms:List*' 
+            - 'kms:GenerateDataKey' 
+            - 'kms:Decrypt' 
+            - 'kms:Encrypt' 
+            - 'kms:ReEncrypt*' 
+            - 'kms:DescribeKey' 
+            Resource: '*' 
+          - Sid: SSM 
+            Effect: 'Allow' 
+            Action: 
+            # - 'ssm:*' 
+            - 'ssm:Get*' 
+            - 'ssm:Describe*' 
+            - 'ssm:List*' 
+            - 'ssm:PutConfigurePackageResult' 
+            Resource: '*' 
+          - Sid: Cloudformation 
+            Effect: 'Allow' 
+            Action: 
+            - 'cloudformation:DescribeStacks' 
+            Resource: '*' 
+          - Sid: codebuild 
+            Effect: 'Allow' 
+            Action: 
+            - 'codebuild:UpdateProject' 
+            Resource: '*' 
+          - Sid: ec2 
+            Effect: 'Allow' 
+            Action: 
+            - 'ec2:*' 
+            Resource: '*' 
+ 
+  CDWCloudformation: 
+    DependsOn: CodeBuildRole 
+    Type: AWS::CodeBuild::Project 
+    Properties: 
+      Artifacts: 
+        Type: CODEPIPELINE 
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL 
+        Image: aws/codebuild/standard:2.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+        - Name: Environment
+          Value: !Sub ${Environment}
+        - Name: CloudformationBucket
+          Value: !Sub ${CloudformationBucket}
+        - Name: Path
+          Value: !Sub ${Path}
+        - Name: StackName
+          Value: !Sub ${StackName}
+      Description: !Sub ${StackName}:${Environment} 
+      ServiceRole: !GetAtt CodeBuildRole.Arn 
+      Source: 
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      TimeoutInMinutes: 10
+
+  Pipeline: 
+    Type: AWS::CodePipeline::Pipeline 
+    Properties: 
+      ArtifactStore: 
+        Type: S3 
+        Location: !Ref ArtifactsBucket 
+      RestartExecutionOnUpdate: true 
+      RoleArn: !GetAtt PipelineRole.Arn 
+      Stages:
+
+        - Name: Source
+          Actions:
+          - Name: Source
+            InputArtifacts: []
+            ActionTypeId:
+              Category: Source
+              Owner: ThirdParty
+              Version: 1
+              Provider: GitHub
+            OutputArtifacts:
+            - Name: SourceCode
+            Configuration:
+              Owner: utiliware
+              Repo: cloudformation-differential-pipeline
+              Branch: master
+              PollForSourceChanges: false
+              # OAuthToken: !Ref GitHubOAuthToken
+            RunOrder: 1
+
+
+        # -
+        #   Name: Source 
+        #   Actions: 
+        #     -
+        #       Name: FetchSource 
+        #       ActionTypeId: 
+        #         Category: Source 
+        #         Owner: AWS 
+        #         Provider: CodeCommit 
+        #         Version: 1 
+        #       Configuration: 
+        #         RepositoryName: !Ref RepositoryName 
+        #         BranchName: !Ref BranchName 
+        #       OutputArtifacts: 
+        #       - Name: Source 
+        #       RunOrder: 1 
+        -
+          Name: Build
+          Actions:
+            -
+              Name: Cloudformation 
+              ActionTypeId: 
+                Category: Build 
+                Owner: AWS 
+                Provider: CodeBuild 
+                Version: 1
+              Configuration: 
+                ProjectName: !Ref CDWCloudformation 
+              InputArtifacts: 
+              -
+                Name: Source 
+              OutputArtifacts: 
+              -
+                Name: Cloudformation 
+              RunOrder: 1 
+        -
+          Name: DeployLevel1
+          Actions:
+            -
+              Name: vpc 
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE 
+                Capabilities: CAPABILITY_IAM 
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-vpc 
+                TemplatePath: Cloudformation::vpc-2azs.yaml 
+                ParameterOverrides: !Sub '{"ClassB": "${ClassB}"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            -
+              Name: alert 
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE 
+                Capabilities: CAPABILITY_IAM 
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-alert
+                TemplatePath: Cloudformation::alert.yaml
+                # ParameterOverrides: !Sub '{"ClassB": "${ClassB}"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            # -
+            #   Name: cognito 
+            #   ActionTypeId: 
+            #     Category: Deploy 
+            #     Owner: AWS 
+            #     Provider: CloudFormation 
+            #     Version: 1 
+            #   Configuration: 
+            #     ActionMode: CREATE_UPDATE 
+            #     Capabilities: CAPABILITY_NAMED_IAM 
+            #     RoleArn: !GetAtt CloudFormationRole.Arn 
+            #     StackName: !Sub ${AWS::StackName}-cognito
+            #     TemplatePath: Cloudformation::cognito.yaml
+            #     # ParameterOverrides: !Sub '{"ClassB": "${ClassB}"}'
+            #   InputArtifacts:
+            #   - 
+            #     Name: Cloudformation 
+            #   RunOrder: 1
+            -
+              Name: ecs-cluster
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM 
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-ecs-cluster
+                TemplatePath: Cloudformation::ecs-cluster.yaml
+                # ParameterOverrides: !Sub '{"ClassB": "${ClassB}"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+        -
+          Name: DeployLevel2
+          Actions:
+            -
+              Name: vpc-flow-logs 
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE 
+                Capabilities: CAPABILITY_IAM 
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-flow-log 
+                TemplatePath: Cloudformation::vpc-flow-logs.yaml 
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc"}' 
+              InputArtifacts:
+              - 
+                Name: Cloudformation
+              RunOrder: 1
+            -
+              Name: vpc-endpoint-s3
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-vpc-endpoint-s3
+                TemplatePath: Cloudformation::vpc-endpoint-s3.yaml
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            -
+              Name: client-sg
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn
+                StackName: !Sub ${AWS::StackName}-client-sg
+                TemplatePath: Cloudformation::client-sg.yaml
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            -
+              Name: kms-key
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn
+                StackName: !Sub ${AWS::StackName}-kms-key
+                TemplatePath: Cloudformation::kms-key.yaml
+                ParameterOverrides: !Sub '{"ParentAlertStack": "${AWS::StackName}-alert"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            -
+              Name: security-group
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn
+                StackName: !Sub ${AWS::StackName}-security-group
+                TemplatePath: Cloudformation::security-group.yaml
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            -
+              Name: vpc-nat-gateway-A
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-vpc-nat-gateway-A
+                TemplatePath: Cloudformation::vpc-nat-gateway.yaml
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc","SubnetZone": "A"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            -
+              Name: vpc-nat-gateway-B
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn 
+                StackName: !Sub ${AWS::StackName}-vpc-nat-gateway-B
+                TemplatePath: Cloudformation::vpc-nat-gateway.yaml
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc","SubnetZone": "B"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            # -
+            #   Name: bastion-hostA
+            #   ActionTypeId: 
+            #     Category: Deploy 
+            #     Owner: AWS 
+            #     Provider: CloudFormation 
+            #     Version: 1 
+            #   Configuration: 
+            #     ActionMode: CREATE_UPDATE
+            #     Capabilities: CAPABILITY_IAM
+            #     RoleArn: !GetAtt CloudFormationRole.Arn 
+            #     StackName: !Sub ${AWS::StackName}-vpc-ssh-bastionA
+            #     TemplatePath: Cloudformation::vpc-ssh-bastion.yaml
+            #     ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc"}'
+            #   InputArtifacts:
+            #   - 
+            #     Name: Cloudformation 
+            #   RunOrder: 1
+        -
+          Name: DeployLevel3
+          Actions:
+            -
+              Name: rds-postgres
+              ActionTypeId: 
+                Category: Deploy 
+                Owner: AWS 
+                Provider: CloudFormation 
+                Version: 1 
+              Configuration: 
+                ActionMode: CREATE_UPDATE 
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationRole.Arn
+                StackName: !Sub ${AWS::StackName}-rds-postgres
+                TemplatePath: Cloudformation::rds-postgres.yaml
+                ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc","ParentAlertStack": "${AWS::StackName}-alert","ParentKmsKeyStack": "${AWS::StackName}-kms-key","ParentClientStack": "${AWS::StackName}-client-sg","EngineVersion": "${EngineVersion}","DBInstanceClass": "${DBInstanceClass}","DBMultiAZ": "${DBMultiAZ}","EnhancedMonitoring": "${EnhancedMonitoring}","EnablePerformanceInsights": "${EnablePerformanceInsights}","DeletionProtection": "${DeletionProtection}","EnableIAMDatabaseAuthentication": "${EnableIAMDatabaseAuthentication}"}'
+              InputArtifacts:
+              - 
+                Name: Cloudformation 
+              RunOrder: 1
+            # -
+            #   Name: alb-public
+            #   ActionTypeId: 
+            #     Category: Deploy 
+            #     Owner: AWS 
+            #     Provider: CloudFormation 
+            #     Version: 1 
+            #   Configuration: 
+            #     ActionMode: CREATE_UPDATE 
+            #     Capabilities: CAPABILITY_IAM
+            #     RoleArn: !GetAtt CloudFormationRole.Arn
+            #     StackName: !Sub ${AWS::StackName}-alb-public
+            #     TemplatePath: Cloudformation::alb-public.yaml
+            #     ParameterOverrides: !Sub '{"ParentVPCStack": "${AWS::StackName}-vpc","ParentClientStack": "${AWS::StackName}-client-sg","Environment": "${Environment}","Domain": "${Domain}"}'
+            #   InputArtifacts:
+            #   - 
+            #     Name: Cloudformation 
+            #   RunOrder: 1

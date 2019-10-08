@@ -1,0 +1,476 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This template deploys security groups
+Parameters:
+  ParentVPCStack:
+    Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
+    Type: String
+Resources:
+  PublicALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      GroupDescription: HTTP(S) Access from Internet
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PublicALBSecurityGroup-Access
+  PublicALBSecurityGroupIngress1:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PublicALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+      Description: HTTP
+  PublicALBSecurityGroupIngress2:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PublicALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: HTTPS
+  PublicALBSecurityGroupEgress1:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PublicALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: 443 App
+  PublicALBSecurityGroupEgress2:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PublicALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Public ECS
+      SourceSecurityGroupId: !Ref PublicECSHostSecurityGroup
+
+  PrivateALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      GroupDescription: HTTP(S) Access from Internet
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PrivateALBSecurityGroup-Access
+  PrivateALBSecurityGroupIngress1:
+    DependsOn: PrivateALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PrivateALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: Public ECS
+      SourceSecurityGroupId: !Ref PublicECSHostSecurityGroup
+  PrivateALBSecurityGroupIngress2:
+    DependsOn: PrivateALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PrivateALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: Admin Servers
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  PrivateALBSecurityGroupEgress1:
+    DependsOn: PrivateALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PrivateALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: App
+      CidrIp: 0.0.0.0/0
+  PrivateALBSecurityGroupEgress2:
+    DependsOn: PrivateALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PrivateALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Private ECS
+      SourceSecurityGroupId: !Ref PrivateECSHostSecurityGroup
+
+  PublicECSHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HTTPS from ALB
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PublicECSHostSecurityGroup-Access
+  PublicECSHostSecurityGroupIngress1:
+    DependsOn: PublicECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PublicECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Public ALB
+      SourceSecurityGroupId: !Ref PublicALBSecurityGroup
+  PublicECSHostSecurityGroupIngress2:
+    DependsOn: PublicECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PublicECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Bastion
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  PublicECSHostSecurityGroupEgress1:
+    DependsOn: PublicECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PublicECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Public ALB
+      SourceSecurityGroupId: !Ref PublicALBSecurityGroup
+  PublicECSHostSecurityGroupEgress2:
+    DependsOn: PublicECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PublicECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Bastion
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  PublicECSHostSecurityGroupEgress3:
+    DependsOn: PublicECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PublicECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Database
+      SourceSecurityGroupId: !Ref DatabaseSecurityGroup
+  PublicECSHostSecurityGroupEgress4:
+    DependsOn: PublicECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PublicECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: ECR
+
+  PrivateECSHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HTTPS from ALB
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PrivateECSHostSecurityGroup-Access
+  PrivateECSHostSecurityGroupIngress1:
+    DependsOn: PrivateECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PrivateECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Private ECS
+      SourceSecurityGroupId: !Ref PrivateALBSecurityGroup
+  PrivateECSHostSecurityGroupIngress2:
+    DependsOn: PrivateECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PrivateECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Bastion
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  PrivateECSHostSecurityGroupEgress1:
+    DependsOn: PrivateECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PrivateECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Private ALB
+      SourceSecurityGroupId: !Ref PrivateALBSecurityGroup
+  PrivateECSHostSecurityGroupEgress2:
+    DependsOn: PrivateECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PrivateECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Bastion
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  PrivateECSHostSecurityGroupEgress2:
+    DependsOn: PrivateECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PrivateECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Database
+      SourceSecurityGroupId: !Ref DatabaseSecurityGroup
+  PrivateECSHostSecurityGroupGroupEgress3:
+    DependsOn: PrivateECSHostSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PrivateECSHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: ECR
+      CidrIp: 0.0.0.0/0
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Database access
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-Database-Access
+  DatabaseSecurityGroupIngress1:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Public ECS
+      SourceSecurityGroupId: !Ref PublicECSHostSecurityGroup
+  DatabaseSecurityGroupIngress2:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Private ECS
+      SourceSecurityGroupId: !Ref PrivateECSHostSecurityGroup
+  DatabaseSecurityGroupIngress3:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Bastion
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  DatabaseSecurityGroupIngress4:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: CodeBuild Server
+      SourceSecurityGroupId: !Ref CodeBuildSecurityGroup
+  DatabaseSecurityGroupEgress1:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Public ECS
+      SourceSecurityGroupId: !Ref PublicECSHostSecurityGroup
+  DatabaseSecurityGroupEgress2:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Private ECS
+      SourceSecurityGroupId: !Ref PrivateECSHostSecurityGroup
+  DatabaseSecurityGroupEgress3:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Bastion
+      SourceSecurityGroupId: !Ref SSHSecurityGroup
+  DatabaseSecurityGroupEgress4:
+    DependsOn: DatabaseSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: CodeBuild Server
+      SourceSecurityGroupId: !Ref CodeBuildSecurityGroup
+
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      GroupDescription: Access to the Bastion Server in public
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-SSH-Access
+  SSHSecurityGroupGroupIngress1:
+    DependsOn: SSHSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SSHSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 66.27.72.245/32
+      Description: "Billy Dale Office"
+  SSHSecurityGroupGroupEgress1:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref SSHSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+      Description: 80 Access
+  SSHSecurityGroupGroupEgress2:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref SSHSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: 443 Access
+  SSHSecurityGroupGroupEgress3:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref SSHSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Database
+      SourceSecurityGroupId: !Ref DatabaseSecurityGroup
+  SSHSecurityGroupGroupEgress4:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref SSHSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Private ECS
+      SourceSecurityGroupId: !Ref PrivateECSHostSecurityGroup
+  SSHSecurityGroupGroupEgress5:
+    DependsOn: PublicALBSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref SSHSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Public ECS
+      SourceSecurityGroupId: !Ref PublicECSHostSecurityGroup
+
+  CodeBuildSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CodeBuild access to updates
+      VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-CodeBuild-Access
+  CodeBuildSecurityGroupEgress1:
+    DependsOn: CodeBuildSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref CodeBuildSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: 80 Access
+      CidrIp: 0.0.0.0/0
+  CodeBuildSecurityGroupEgress2:
+    DependsOn: CodeBuildSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref CodeBuildSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: 443 Access
+      CidrIp: 0.0.0.0/0
+  CodeBuildSecurityGroupEgress3:
+    DependsOn: CodeBuildSecurityGroup
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref CodeBuildSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Database
+      SourceSecurityGroupId: !Ref DatabaseSecurityGroup
+
+Outputs:
+  PublicALBSecurityGroup:
+    Description: 'A reference to a PublicALBSecurityGroup'
+    Value: !Ref PublicALBSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicALBSecurityGroup'
+  PrivateALBSecurityGroup:
+    Description: 'A reference to a PrivateALBSecurityGroup'
+    Value: !Ref PrivateALBSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateALBSecurityGroup'
+  PublicECSHostSecurityGroup:
+    Description: 'A reference to a PublicECSHostSecurityGroup'
+    Value: !Ref PublicECSHostSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicECSHostSecurityGroup'
+  PrivateECSHostSecurityGroup:
+    Description: 'A reference to a PrivateECSHostSecurityGroup'
+    Value: !Ref PrivateECSHostSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateECSHostSecurityGroup'
+  DatabaseSecurityGroup:
+    Description: 'A reference to a DatabaseSecurityGroup'
+    Value: !Ref DatabaseSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseSecurityGroup'
+  SSHSecurityGroup:
+    Description: 'A reference to a SSHSecurityGroup'
+    Value: !Ref SSHSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SSHSecurityGroup'
+  CodeBuildSecurityGroup:
+    Description: 'A reference to a CodeBuildSecurityGroup'
+    Value: !Ref CodeBuildSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-CodeBuildSecurityGroup'

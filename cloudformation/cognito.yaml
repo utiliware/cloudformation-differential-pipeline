@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Deploy a cognito user pool and cognito user pool application.
+Parameters:
+  EmailInviteSubject:
+    Description: The Email Invite Subject
+    Type: String
+    Default: Your temporary password
+  EmailInviteMessage:
+    Description: The Email Invite Message
+    Type: String
+    Default: "Your username is {username}, your password is {####}"
+  EmailVerificationSubject:
+    Description: The Email Verification Subject
+    Type: String
+    Default: Your temporary password
+  EmailVerificationMessage:
+    Description: The Email Verification Message
+    Type: String
+    Default: "Your verification code is {####}"
+Resources:
+  SNSRole:
+    Type: AWS::IAM::Role
+    Description: "An IAM Role to allow Cognito to send SNS messages"
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-SNSRole
+      ManagedPolicyArns:
+        - Ref: CognitoSNSPolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - cognito-idp.amazonaws.com
+    DependsOn:
+      - CognitoSNSPolicy
+  CognitoSNSPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Managed policy to allow Amazon Cognito to access SNS
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sns:publish
+            Resource: "*"
+  UserPool:
+    Type: 'AWS::Cognito::UserPool'
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        UnusedAccountValidityDays: 2
+        InviteMessageTemplate:
+          EmailMessage: !Ref EmailInviteMessage
+          EmailSubject: !Ref EmailInviteSubject
+      AutoVerifiedAttributes:
+        - email
+      EmailVerificationMessage: !Ref EmailVerificationMessage
+      EmailVerificationSubject: !Ref EmailVerificationSubject
+      MfaConfiguration: "ON"
+      SmsConfiguration:
+        SnsCallerArn: !GetAtt SNSRole.Arn
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+          DeveloperOnlyAttribute: false
+          StringAttributeConstraints:
+            MaxLength: 256
+            MinLength: 5
+        - Name: family_name
+          AttributeDataType: String
+          DeveloperOnlyAttribute: false
+          Mutable: true
+          StringAttributeConstraints:
+            MaxLength: 256
+            MinLength: 1
+          Required: true
+        - Name: given_name
+          AttributeDataType: String
+          DeveloperOnlyAttribute: false
+          Mutable: true
+          StringAttributeConstraints:
+            MaxLength: 256
+            MinLength: 1
+          Required: true
+      UsernameAttributes:
+        - email
+      UserPoolName: !Sub "${AWS::StackName}-UserPool"
+  UserPoolClient:
+    Type: 'AWS::Cognito::UserPoolClient'
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-UserPoolClient"
+      ExplicitAuthFlows:
+        - USER_PASSWORD_AUTH
+      GenerateSecret: true
+      ReadAttributes:
+        - 'email'
+        - 'given_name'
+        - 'family_name'
+      RefreshTokenValidity: 1
+      UserPoolId: !Ref UserPool
+    DependsOn:
+      - UserPool
+Outputs:
+  UserPoolId:
+    Description: The User Pool Id
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+  UserPoolClientId:
+    Description: The User Pool Client Id
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'

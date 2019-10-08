@@ -1,0 +1,32 @@
+version: 0.2 
+env: 
+  variables: 
+    test: "testing123"
+phases: 
+  install:
+    runtime-versions:
+      golang: 1.12
+      nodejs: 10
+      docker: 18
+      python: 3.7
+    commands: 
+      - echo Entered the install phase... 
+  build: 
+    commands: 
+      - pwd 
+      - printenv
+      - echo $CloudformationBucket
+      - echo $Environment
+      - echo $Path
+      - echo $test
+      - ls -la
+      - ls -la ./cloudformation
+  post_build: 
+    commands: 
+      - echo Entered the post_build phase... 
+      - echo Build completed on `date`
+artifacts: 
+  files: 
+    - '**/*'
+  base-directory: $Path
+  name: $(AWS_REGION)-$(date +%Y-%m-%d)
